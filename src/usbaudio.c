@@ -1,5 +1,5 @@
 #include "usbaudio.h"
-#include "sound.h"
+#include "soundasm.h"
 
 #include <usbdrvce.h>
 #include <tice.h>
@@ -190,11 +190,21 @@ static usb_error_t handleUsbEvent(usb_event_t event, void *eventData, usb_callba
     return error;
 }
 
+static usb_error_t usbaudio_Init(void) {
+    return usb_Init(handleUsbEvent, NULL, &standard, USB_DEFAULT_INIT_FLAGS);
+}
+
+__attribute__((destructor)) static void usbaudio_Cleanup(void) {
+    usb_Cleanup();
+}
+
 void usbaudio_Play(void) {
     uint8_t audioBlock[BLOCK_LENGTH];
     uint32_t last = 0;
     usb_endpoint_t endpoint;
     
+    soundasm_Setup();
+    usbaudio_Init();
     while (!os_GetCSC()) {
         usb_HandleEvents();
         if (usb_GetCycleCounter() >= last + BLOCK_CYCLES) {
@@ -202,18 +212,11 @@ void usbaudio_Play(void) {
             endpoint = usb_GetDeviceEndpoint(usb_FindDevice(NULL, NULL, USB_SKIP_HUBS | USB_SKIP_DISABLED), USB_DEVICE_TO_HOST | 1);
             if (endpoint) {
                 for (uint8_t i = 0; i < BLOCK_LENGTH; i++) {
-                    audioBlock[i] = (uint8_t)sound_GenerateSample() + 128;
+                    audioBlock[i] = (uint8_t)soundasm_GenerateSample() + 128;
                 }
                 usb_IsochronousTransfer(endpoint, &audioBlock, BLOCK_LENGTH, 1, NULL);
             }
         }
     }
-}
-
-usb_error_t usbaudio_Init(void) {
-    return usb_Init(handleUsbEvent, NULL, &standard, USB_DEFAULT_INIT_FLAGS);
-}
-
-__attribute__((destructor)) void usbaudio_Cleanup(void) {
-    usb_Cleanup();
+    usbaudio_Cleanup();
 }

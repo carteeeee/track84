@@ -2,3 +2,6 @@
 *.o
 bin/
 obj/
+
+# font outputs
+*font.inc

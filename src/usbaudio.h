@@ -95,7 +95,5 @@ typedef struct audio_isochronous_descriptor {
 } audio_isochronous_descriptor_t;
 
 void usbaudio_Play(void);
-usb_error_t usbaudio_Init(void);
-void usbaudio_Cleanup(void);
 
 #endif

@@ -2,7 +2,7 @@
 #include "data/strings.h"
 #include "fonts/fonts.h"
 
-#include "sound.h"
+#include "soundasm.h"
 #include "usbaudio.h"
 
 #include <ti/getcsc.h>
@@ -10,76 +10,103 @@
 #include <tice.h>
 #include <usbdrvce.h>
 
-static gui_element_t gui_elements[GUI_HEIGHT][GUI_WIDTH] = {
+#define PATTERN_STEP {{.editable=true,.value=0,.strings=&note_names,},}
+#define SONG_OSC     {.editable=true,.value=0,.strings=&oscillator_types,}
+#define SONG_STEP    {.editable=true,.value=0,.strings=&pattern_numbers,}
+#define SONG_ROW     {SONG_STEP, SONG_STEP, SONG_STEP, SONG_STEP, SONG_STEP, SONG_STEP}
+
+const static gui_element_t menu_gui[MENU_HEIGHT][MENU_WIDTH] = {
     {
         {
-            .editable = true,
+            .editable = false,
             .value = 0,
-            .strings = &oscilator_types,
-        },
-        {
-            .editable = true,
-            .value = 0,
-            .strings = &oscilator_types,
-        },
-        {
-            .editable = true,
-            .value = 0,
-            .strings = &oscilator_types,
-        },
-        {
-            .editable = true,
-            .value = 0,
-            .strings = &oscilator_types,
-        },
-        {
-            .editable = true,
-            .value = 0,
-            .strings = &oscilator_types,
-        },
-        {
-            .editable = true,
-            .value = 0,
-            .strings = &oscilator_types,
+            .strings = &menu_buttons,
         },
     },
     {
         {
-            .editable = true,
-            .value = 48,
-            .strings = &note_names,
+            .editable = false,
+            .value = 1,
+            .strings = &menu_buttons,
         },
+    },
+    {
         {
-            .editable = true,
-            .value = 48,
-            .strings = &note_names,
+            .editable = false,
+            .value = 2,
+            .strings = &menu_buttons,
         },
+    },
+    {
         {
-            .editable = true,
-            .value = 48,
-            .strings = &note_names,
-        },
-        {
-            .editable = true,
-            .value = 48,
-            .strings = &note_names,
-        },
-        {
-            .editable = true,
-            .value = 48,
-            .strings = &note_names,
-        },
-        {
-            .editable = true,
-            .value = 48,
-            .strings = &note_names,
+            .editable = false,
+            .value = 3,
+            .strings = &menu_buttons,
         },
     },
 };
 
+static gui_element_t pattern_gui[PATTERN_HEIGHT][PATTERN_WIDTH] = {
+    {
+        {
+            .editable = true,
+            .value = 0,
+            .strings = &pattern_numbers,
+        },
+    },
+    PATTERN_STEP, PATTERN_STEP, PATTERN_STEP, PATTERN_STEP,
+    PATTERN_STEP, PATTERN_STEP, PATTERN_STEP, PATTERN_STEP,
+    PATTERN_STEP, PATTERN_STEP, PATTERN_STEP, PATTERN_STEP,
+    PATTERN_STEP, PATTERN_STEP, PATTERN_STEP, PATTERN_STEP,
+
+    PATTERN_STEP, PATTERN_STEP, PATTERN_STEP, PATTERN_STEP,
+    PATTERN_STEP, PATTERN_STEP, PATTERN_STEP, PATTERN_STEP,
+    PATTERN_STEP, PATTERN_STEP, PATTERN_STEP, PATTERN_STEP,
+    PATTERN_STEP, PATTERN_STEP, PATTERN_STEP, PATTERN_STEP,
+};
+
+static gui_element_t song_gui[SONG_HEIGHT][SONG_WIDTH] = {
+  {
+      {
+          .editable = true,
+          .value = 0,
+          .strings = &tempo_numbers,
+      },
+      {
+          .editable = true,
+          .value = 0,
+          .strings = &pattern_length_numbers,
+      },
+  },
+  {SONG_OSC, SONG_OSC, SONG_OSC, SONG_OSC, SONG_OSC, SONG_OSC},
+
+  SONG_ROW, SONG_ROW, SONG_ROW, SONG_ROW,
+  SONG_ROW, SONG_ROW, SONG_ROW, SONG_ROW,
+  SONG_ROW, SONG_ROW, SONG_ROW, SONG_ROW,
+  SONG_ROW, SONG_ROW, SONG_ROW, SONG_ROW,
+
+  SONG_ROW, SONG_ROW, SONG_ROW, SONG_ROW,
+  SONG_ROW, SONG_ROW, SONG_ROW, SONG_ROW,
+  SONG_ROW, SONG_ROW, SONG_ROW, SONG_ROW,
+  SONG_ROW, SONG_ROW, SONG_ROW, SONG_ROW,
+};
+
+static gui_element_t *gui_elements = &menu_gui;
+
+int width = MENU_WIDTH;
+int height = MENU_HEIGHT;
 int cursorx = 0;
 int cursory = 0;
+int scrolly = 0;
 bool editing = false;
+
+ui_menu_t menu = MAIN_MENU;
+
+static gui_element_t *ui_GetElement(int x, int y) {
+    return &gui_elements[y * width + x]; // trust :pray:
+}
+
+#define ui_GetCursor() ui_GetElement(cursorx, cursory)
 
 void ui_Init(void) {
     gfx_Begin();
@@ -94,15 +121,18 @@ void ui_Init(void) {
 
 static void ui_Draw(void) {
     gfx_ZeroScreen();
-    
+
     // please kill me
-    for (int y = 0; y < GUI_HEIGHT; y++) {
-        for (int x = 0; x < GUI_WIDTH; x++) {
+    int realHeight = MIN(height - scrolly, MAX_HEIGHT);
+    for (int y = scrolly; y < realHeight + scrolly; y++) {
+        for (int x = 0; x < width; x++) {
+            gui_element_t *element = ui_GetElement(x, y);
             bool selected = (cursorx == x) && (cursory == y);
-            gui_element_t element = gui_elements[y][x];
-            char *string = element.strings->strings[element.value]; 
+            char *string = element->strings->strings[element->value];
+
             int sx = (x + 0.5) * BOX_HSPACING;
-            int sy = y * BOX_VSPACING + DMARGIN;
+            int sy = (y - scrolly) * BOX_VSPACING + DMARGIN;
+
             fontlib_SetCursorPosition(sx - fontlib_GetStringWidth(string) / 2, sy);
             fontlib_DrawString(string);
             gfx_SetColor(selected ? (editing ? EDITING_COLOR : SELECTED_COLOR) : DEFAULT_COLOR);
@@ -120,73 +150,215 @@ static void ui_DrawPlaying(void) {
     gfx_SwapDraw();
 }
 
+static void ui_LoadPattern() {
+    if (menu != PATTERN_EDIT) return;
+    int index = ui_GetElement(0, 0)->value;
+    for (int i = 0; i < MAX_PATTERN_LENGTH; i++) {
+        ui_GetElement(0, i + 1)->value = soundasm_state.patterns[index].steps[i];
+    }
+}
+
+static void ui_LoadSong() {
+    if (menu != SONG_EDIT) return;
+    ui_GetElement(0, 0)->value = soundasm_state.tempo;
+    ui_GetElement(1, 0)->value = soundasm_state.pattern_length;
+    
+    for (int i = 0; i < NUM_OSCS; i++) {
+        ui_GetElement(i, 1)->value = soundasm_state.oscs[i].index;
+    }
+}
+
+static void ui_ChangeMenu(ui_menu_t new_menu) {
+    cursorx = 0;
+    cursory = 0;
+    scrolly = 0;
+    editing = false;
+    menu = new_menu;
+    switch (menu) {
+        case MAIN_MENU:
+            gui_elements = &menu_gui;
+            width = MENU_WIDTH;
+            height = MENU_HEIGHT;
+            break;
+        case PATTERN_EDIT:
+            gui_elements = &pattern_gui;
+            width = PATTERN_WIDTH;
+            height = soundasm_state.pattern_length + 1;
+            ui_LoadPattern();
+            break;
+        case SONG_EDIT:
+            gui_elements = &song_gui;
+            width = SONG_WIDTH;
+            height = SONG_HEIGHT;
+            ui_LoadSong();
+            break;
+    }
+}
+
+static void ui_UpdateScroll(void) {
+    if (cursory < scrolly) {
+        scrolly = cursory;
+    } else if (cursory >= scrolly + MAX_HEIGHT) {
+        scrolly = cursory - (MAX_HEIGHT - 1);
+    }
+}
+
+static void ui_EditCell(ui_edit_type_t type) {
+    gui_element_t *element = ui_GetCursor();
+    int max = element->strings->length;
+    int dist;
+    switch (type) {
+        case ONE_DOWN:
+            dist = max - 1;
+            break;
+        case ONE_UP:
+            dist = 1;
+            break;
+        case JUMP_DOWN:
+            dist = max - element->strings->jump;
+            break;
+        case JUMP_UP:
+            dist = element->strings->jump;
+            break;
+    }
+    element->value = (element->value + dist) % max;
+}
+
+static void ui_MoveCursor(ui_move_type_t type) {
+    switch (type) {
+        case MOVE_RIGHT:
+            cursorx++;
+            cursorx %= width;
+            break;
+        case MOVE_LEFT:
+            cursorx += width - 1;
+            cursorx %= width;
+            break;
+        case MOVE_DOWN:
+            cursory++;
+            cursory %= height;
+            break;
+        case MOVE_UP:
+            cursory += height - 1;
+            cursory %= height;
+            break;
+    }
+    ui_UpdateScroll();
+}
+
+static void ui_SpecialUpdate(void) {
+    switch (menu) {
+        case PATTERN_EDIT:
+            if (cursory == 0) {
+                ui_LoadPattern();
+            } else {
+                int index = ui_GetElement(0, 0)->value;
+                soundasm_state.patterns[index].steps[cursory - 1] = ui_GetCursor()->value;
+            }
+            break;
+        case SONG_EDIT: {
+            int value = ui_GetCursor()->value;
+            if (cursory == 0) {
+                switch (cursorx) {
+                    case 0:
+                        soundasm_state.tempo = value;
+                        break;
+                    case 1:
+                        soundasm_state.pattern_length = value;
+                        break;
+                }
+            } else if (cursory == 1) {
+                soundasm_state.oscs[cursorx].index = value;
+            } else {
+                soundasm_state.oscs[cursorx].arrangement[cursory - SONG_HEADER] = value;
+            }
+            break;
+        }
+        default:
+            break;
+    }
+}
+
 static bool ui_Navigation(void) {
     switch (os_GetCSC()) {
         case 0:
-            // idk wat im cooking here
-            //usb_HandleEvents();
             break;
         case sk_Right:
-            if (!editing) {
-                cursorx++;
-                cursorx %= GUI_WIDTH;
+            if (editing) {
+                ui_EditCell(JUMP_UP);
+            } else {
+                ui_MoveCursor(MOVE_RIGHT);
             }
             break;
         case sk_Left:
-            if (!editing) {
-                cursorx += GUI_WIDTH - 1;
-                cursorx %= GUI_WIDTH;
+            if (editing) {
+                ui_EditCell(JUMP_DOWN);
+            } else {
+                ui_MoveCursor(MOVE_LEFT);
             }
             break;
         case sk_Down:
             if (editing) {
-                gui_element_t *element = &gui_elements[cursory][cursorx];
-                int max = element->strings->length;
-                element->value = (element->value + (max - 1)) % max;
+                ui_EditCell(ONE_DOWN);
             } else {
-                cursory++;
-                cursory %= GUI_HEIGHT;
+                ui_MoveCursor(MOVE_DOWN);
             }
             break;
         case sk_Up:
             if (editing) {
-                gui_element_t *element = &gui_elements[cursory][cursorx];
-                int max = element->strings->length;
-                element->value = (element->value + 1) % max;
+                ui_EditCell(ONE_UP);
             } else {
-                cursory += GUI_HEIGHT - 1;
-                cursory %= GUI_HEIGHT;
+                ui_MoveCursor(MOVE_UP);
             }
             break;
-        case sk_Mode:
-            if (editing) {
-                editing = false;
-            } else if (gui_elements[cursory][cursorx].editable) {
-                editing = true;
+        case sk_Math:
+            // copy prev cell value & go down
+            if (menu != PATTERN_EDIT && menu != SONG_EDIT) break; 
+            if (editing) break;
+            if (cursory == 0 || cursory == 1) break;
+            ui_GetCursor()->value = ui_GetElement(cursorx, cursory - 1)->value;
+            ui_SpecialUpdate();
+            ui_MoveCursor(MOVE_DOWN);
+            break;
+        case sk_Recip:
+            // clear cell
+            if (menu != PATTERN_EDIT && menu != SONG_EDIT) break; 
+            if (editing) break;
+            ui_GetCursor()->value = 0;
+            ui_SpecialUpdate();
+            break;
+        case sk_2nd:
+            if (menu == MAIN_MENU) {
+                switch (ui_GetCursor()->value) {
+                    case 2:
+                        ui_ChangeMenu(PATTERN_EDIT);
+                        break;
+                    case 3:
+                        ui_ChangeMenu(SONG_EDIT);
+                        break;
+                }
+            } else {
+                if (editing) {
+                    editing = false;
+                    ui_SpecialUpdate();
+                } else if (ui_GetCursor()->editable) {
+                    editing = true;
+                }
             }
             break;
         case sk_Enter:
             // playing is blocking lol
-            editing = false;
-            sound_SetOscs(gui_elements[0][0].value,
-                          gui_elements[0][1].value,
-                          gui_elements[0][2].value,
-                          gui_elements[0][3].value,
-                          gui_elements[0][4].value,
-                          gui_elements[0][5].value);
-            sound_SetPitches(gui_elements[1][0].value,
-                             gui_elements[1][1].value,
-                             gui_elements[1][2].value,
-                             gui_elements[1][3].value,
-                             gui_elements[1][4].value,
-                             gui_elements[1][5].value);
+            if (editing) break;
             ui_DrawPlaying();
-            usbaudio_Init();
             usbaudio_Play();
-            usbaudio_Cleanup();
             break;
         case sk_Clear:
-            return false;
+            if (menu == MAIN_MENU) {
+                return false;
+            } else {
+                ui_ChangeMenu(MAIN_MENU);
+            }
+            break;
     }
 
     return true;
