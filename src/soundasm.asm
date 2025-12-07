@@ -3,6 +3,7 @@
     assume adl=1
 
 NUM_OSCS := 6
+_oscasm_NoiseSeedInit := 0x4242
 
 macro evhandler osc
     ;; oscillator arrangement lookup ;;
@@ -38,7 +39,78 @@ macro evhandler osc
     ld      (_soundasm_incs + 3 * osc), de
 end macro
 
+; the noise oscillator is a macro because we need the oscillator number
+macro noiseosc osc
+    local b15z, b7z, nonewsample
+    
+    ; if it's been a certain amount of time then we generate a new sample
+    ld      hl, (_oscasm_NoiseLast + 3 * osc)
+    ld      de, 16384
+    add     hl, de
+    push    hl
+    pop     de
+    or      a, a
+    sbc     hl, bc
+    ld      hl, (_oscasm_NoiseSeeds + 3 * osc)
+    jr      nc, nonewsample
+    ld      (_oscasm_NoiseLast + 3 * osc), de
+
+    ; from wikipedia for lfsr
+    ; lfsr ^= lfsr >> 7
+    ; lfsr ^= lfsr << 9
+    ; lfsr ^= lfsr >> 13
+
+    ; >> 7 (idek atp)
+    ; bit 0 = bit 7
+    ; bit 8 = bit 15
+    ; lower byte = upper byte << 1
+    ; 3+1+2+3+2 + 2+3+2 + 1+1+1+1+1+1 = 10+7+6 = 23 cycles (worst case)
+    ld      de, 0
+    ld      e, h
+    sla     e
+    jr      nc, b15z
+    set     0, d
+b15z:
+    bit     7, l
+    jr      z, b7z
+    set     0, e
+b7z:
+    ld      a, d
+    xor     a, h
+    ld      h, a
+    ld      a, e
+    xor     a, l
+    ld      l, a
+    ; << 9 (<< 8 << 1)
+    ; 1+2+1+1 = 5 cycles
+    ld      a, l ; << 8, a is top byte
+    sla     a    ; << 1
+    xor     a, h
+    ld      h, a
+    ; >> 13 (>> 8 >> 5)
+    ; 1+2+2+2+2+2+1+1 = 13 cycles
+    ld      a, h ; >> 8, a is low byte
+    srl     a    ; >> 1
+    srl     a    ; >> 1
+    srl     a    ; >> 1
+    srl     a    ; >> 1
+    srl     a    ; >> 1
+    xor     a, l
+    ld      l, a
+    ; ---
+    ld      (_oscasm_NoiseSeeds + 3 * osc), hl
+nonewsample:
+    sra     h
+    sra     h
+    sra     h
+    pop     de
+    ld      a, e
+    add     a, h
+end macro
+
 macro oschandler osc
+    local notnoise, noise
+
     ld      hl, (_soundasm_phases + 3 * osc)
     ld      de, (_soundasm_incs + 3 * osc)
     add     hl, de
@@ -50,13 +122,27 @@ macro oschandler osc
     ld      de, 0
     ld      hl, _state_oscs + 65 * osc
     ld      e, (hl)
+    ; if e is the noise oscillator (4)
+    ld      bc, 0
+    ld      c, a
+    push    bc
+    ; we load the phase into bc because it's used for all oscs
+    ld      bc, (_soundasm_phases + 3 * osc)
+    ld      a, 4
+    cp      a, e
+    jr      nz, notnoise
+    noiseosc osc
+    jr      noise
+notnoise:
     ld      hl, _oscasm_Table
     add     hl, de
     add     hl, de
     add     hl, de
     ld      hl, (hl)
-    ld      bc, (_soundasm_phases + 3 * osc)
+    pop     de
+    ld      a, e
     call    __indcallhl
+noise:
 end macro
 
 
@@ -74,7 +160,14 @@ _soundasm_EventHandler:
 
     public _soundasm_Setup
 _soundasm_Setup:
-    ld      a, 0 ; i use ld here to get it to 69 of them because funy
+    ld      hl, _oscasm_NoiseSeedInit
+    ld      (_oscasm_NoiseSeeds + 3 * 0), hl
+    ld      (_oscasm_NoiseSeeds + 3 * 1), hl
+    ld      (_oscasm_NoiseSeeds + 3 * 2), hl
+    ld      (_oscasm_NoiseSeeds + 3 * 3), hl
+    ld      (_oscasm_NoiseSeeds + 3 * 4), hl
+    ld      (_oscasm_NoiseSeeds + 3 * 5), hl
+    xor     a, a
     ld      hl, 0
     ld      (_soundasm_time), hl
     ld      (_soundasm_lastrow), hl
@@ -184,65 +277,6 @@ _oscasm_Triangle:
     add     a, (hl)
     ret
 
-    private _oscasm_Noise
-_oscasm_Noise:
-    ld      de, 0
-    ld      e, a
-    push    de
-    ; from wikipedia for lfsr
-    ; lfsr ^= lfsr >> 7
-    ; lfsr ^= lfsr << 9
-    ; lfsr ^= lfsr >> 13
-    ld      hl, 0
-    ld      hl, (_oscasm_NoiseSeed)
-    ; >> 7 (idek atp)
-    ; bit 0 = bit 7
-    ; bit 8 = bit 15
-    ; lower byte = upper byte << 1
-    ; 3+1+2+3+2 + 2+3+2 + 1+1+1+1+1+1 = 10+7+6 = 23 cycles (worst case)
-    ld      de, 0
-    ld      e, h
-    sla     e
-    jr      nc, b15z
-    set     0, d
-b15z:
-    bit     7, l
-    jr      z, b7z
-    set     0, e
-b7z:
-    ld      a, d
-    xor     a, h
-    ld      h, a
-    ld      a, e
-    xor     a, l
-    ld      l, a
-    ; << 9 (<< 8 << 1)
-    ; 1+2+1+1 = 5 cycles
-    ld      a, l ; << 8, a is top byte
-    sla     a    ; << 1
-    xor     a, h
-    ld      h, a
-    ; >> 13 (>> 8 >> 5)
-    ; 1+2+2+2+2+2+1+1 = 13 cycles
-    ld      a, h ; >> 8, a is low byte
-    srl     a    ; >> 1
-    srl     a    ; >> 1
-    srl     a    ; >> 1
-    srl     a    ; >> 1
-    srl     a    ; >> 1
-    xor     a, l
-    ld      l, a
-    ; ---
-    ld      (_oscasm_NoiseSeed), hl
-    sra     h
-    sra     h
-    sra     h
-    pop     de
-    ld      a, e
-    add     a, h
-    ret
-
-
     private _oscasm_Null
 _oscasm_Null:
     ret
@@ -250,10 +284,19 @@ _oscasm_Null:
 
 
     section .data
-    private _oscasm_NoiseSeed
-_oscasm_NoiseSeed:
-    dl 0x4242
+    private _oscasm_NoiseSeeds
+_oscasm_NoiseSeeds:
+    dl _oscasm_NoiseSeedInit
+    dl _oscasm_NoiseSeedInit
+    dl _oscasm_NoiseSeedInit
+    dl _oscasm_NoiseSeedInit
+    dl _oscasm_NoiseSeedInit
+    dl _oscasm_NoiseSeedInit
 
+    section .bss
+    private _oscasm_NoiseLast
+_oscasm_NoiseLast:
+    rb 3 * NUM_OSCS
 
 
     section .rodata
@@ -263,7 +306,7 @@ _oscasm_Table:
     dl _oscasm_Saw
     dl _oscasm_Square
     dl _oscasm_Triangle
-    dl _oscasm_Noise
+    dl _oscasm_Null ; noise doesn't use the table
     dl _oscasm_Null
 
 

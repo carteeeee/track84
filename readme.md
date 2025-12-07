@@ -55,10 +55,11 @@ install the [ce c toolchain](https://ce-programming.github.io/toolchain/) and th
 - [ ] sound stuff
   - [x] basic oscillator system
   - [x] sine saw square triangle
-  - [ ] get a functional noise generator
+  - [x] get a functional noise generator
     - [x] basic noise
-    - [ ] pitch change
+    - [x] pitch change
   - [x] get working event handling
+  - [ ] tempo adjustment
 - [x] gui stuff
   - [x] basic controls and grid layout
   - [x] main menu
