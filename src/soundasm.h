@@ -24,8 +24,9 @@ typedef struct soundasm_proj_osc {
     uint8_t arrangement[MAX_SONG_LENGTH];
 } soundasm_proj_osc_t;
 
-// 2440 bytes
+// 2444 bytes
 typedef struct soundasm_proj_state {
+    uint8_t magic[4];
     uint8_t tempo;
     uint8_t pattern_length;
     soundasm_proj_osc_t oscs[NUM_OSCS];

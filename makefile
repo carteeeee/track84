@@ -4,10 +4,10 @@
 
 NAME = TRACK84
 ICON = icon.png
-DESCRIPTION = "the"
+DESCRIPTION = "a music tracker for the ti-84+ce"
 COMPRESSED = YES
 ARCHIVED = YES
-VERSION = 1.0.0
+VERSION = 0.2.0
 
 CFLAGS = -Wall -Wextra -O3
 CXXFLAGS = -Wall -Wextra -O3

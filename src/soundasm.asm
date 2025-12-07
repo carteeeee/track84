@@ -291,6 +291,7 @@ _soundasm_ptrn:
     section .bss
     public _soundasm_state
 _soundasm_state:
+    rb 4 ; for the magic
     private _state_tempo
 _state_tempo:
     rb 1

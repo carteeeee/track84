@@ -2,6 +2,8 @@
 
 very badly written tracker for the ti-84 plus ce
 
+you probably don't want to use this yet as i still have to implement some features
+
 notes:
 - the audio is 8000hz 8-bit
 - the usb device is added and removed every time it is played (by the calculator, not the user)
@@ -57,12 +59,12 @@ install the [ce c toolchain](https://ce-programming.github.io/toolchain/) and th
     - [x] basic noise
     - [ ] pitch change
   - [x] get working event handling
-- [ ] gui stuff
+- [x] gui stuff
   - [x] basic controls and grid layout
   - [x] main menu
   - [x] patterns
   - [x] songs
-  - [ ] saving
+  - [x] saving
 
 ## high-level overview
 

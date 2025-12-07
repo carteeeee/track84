@@ -4,8 +4,19 @@
 #include <stdbool.h>
 #include <graphx.h>
 
-#define SONG_HEADER 2
+// R84[version 1]
+#define APPVAR_MAGIC0 0x52
+#define APPVAR_MAGIC1 0x38
+#define APPVAR_MAGIC2 0x34
+#define APPVAR_MAGIC3 0x01
+#define APPVAR_MAGIC  APPVAR_MAGIC0, APPVAR_MAGIC1, APPVAR_MAGIC2, APPVAR_MAGIC3
 
+#define MAX_NAME_LENGTH 8
+#define LOAD_MAX        10
+#define LOAD_VSPACING   (GFX_LCD_HEIGHT / (LOAD_MAX + 1))
+
+// the number of rows before arrangement data in the song menu
+#define SONG_HEADER    2
 #define MENU_WIDTH     1
 #define MENU_HEIGHT    4
 #define PATTERN_WIDTH  1

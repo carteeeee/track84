@@ -6,9 +6,9 @@
 #include <math.h>
 
 static const usb_string_descriptor_t product_name = {
-    .bLength = sizeof(product_name) + 8,
+    .bLength = sizeof(product_name) + 13*2,
     .bDescriptorType = USB_STRING_DESCRIPTOR,
-    .bString = L"ti84",
+    .bString = L"track84 audio",
 };
 
 static const usb_string_descriptor_t *strings[] = { &product_name };

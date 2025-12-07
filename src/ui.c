@@ -6,9 +6,12 @@
 #include "usbaudio.h"
 
 #include <ti/getcsc.h>
+#include <ti/getkey.h>
 #include <graphx.h>
 #include <tice.h>
 #include <usbdrvce.h>
+#include <fileioc.h>
+#include <string.h>
 
 #define PATTERN_STEP {{.editable=true,.value=0,.strings=&note_names,},}
 #define SONG_OSC     {.editable=true,.value=0,.strings=&oscillator_types,}
@@ -76,39 +79,39 @@ static gui_element_t pattern_gui[PATTERN_HEIGHT][PATTERN_WIDTH] = {
 };
 
 static gui_element_t song_gui[SONG_HEIGHT][SONG_WIDTH] = {
-  {
-      {
-          .editable = true,
-          .value = 0,
-          .strings = &tempo_numbers,
-      },
-      {
-          .editable = true,
-          .value = 0,
-          .strings = &pattern_length_numbers,
-      },
-  },
-  {SONG_OSC, SONG_OSC, SONG_OSC, SONG_OSC, SONG_OSC, SONG_OSC},
+    {
+        {
+            .editable = true,
+            .value = 0,
+            .strings = &tempo_numbers,
+        },
+        {
+            .editable = true,
+            .value = 0,
+            .strings = &pattern_length_numbers,
+        },
+    },
+    {SONG_OSC, SONG_OSC, SONG_OSC, SONG_OSC, SONG_OSC, SONG_OSC},
 
-  SONG_ROW, SONG_ROW, SONG_ROW, SONG_ROW,
-  SONG_ROW, SONG_ROW, SONG_ROW, SONG_ROW,
-  SONG_ROW, SONG_ROW, SONG_ROW, SONG_ROW,
-  SONG_ROW, SONG_ROW, SONG_ROW, SONG_ROW,
+    SONG_ROW, SONG_ROW, SONG_ROW, SONG_ROW,
+    SONG_ROW, SONG_ROW, SONG_ROW, SONG_ROW,
+    SONG_ROW, SONG_ROW, SONG_ROW, SONG_ROW,
+    SONG_ROW, SONG_ROW, SONG_ROW, SONG_ROW,
 
-  SONG_ROW, SONG_ROW, SONG_ROW, SONG_ROW,
-  SONG_ROW, SONG_ROW, SONG_ROW, SONG_ROW,
-  SONG_ROW, SONG_ROW, SONG_ROW, SONG_ROW,
-  SONG_ROW, SONG_ROW, SONG_ROW, SONG_ROW,
+    SONG_ROW, SONG_ROW, SONG_ROW, SONG_ROW,
+    SONG_ROW, SONG_ROW, SONG_ROW, SONG_ROW,
+    SONG_ROW, SONG_ROW, SONG_ROW, SONG_ROW,
+    SONG_ROW, SONG_ROW, SONG_ROW, SONG_ROW,
 
-  SONG_ROW, SONG_ROW, SONG_ROW, SONG_ROW,
-  SONG_ROW, SONG_ROW, SONG_ROW, SONG_ROW,
-  SONG_ROW, SONG_ROW, SONG_ROW, SONG_ROW,
-  SONG_ROW, SONG_ROW, SONG_ROW, SONG_ROW,
+    SONG_ROW, SONG_ROW, SONG_ROW, SONG_ROW,
+    SONG_ROW, SONG_ROW, SONG_ROW, SONG_ROW,
+    SONG_ROW, SONG_ROW, SONG_ROW, SONG_ROW,
+    SONG_ROW, SONG_ROW, SONG_ROW, SONG_ROW,
 
-  SONG_ROW, SONG_ROW, SONG_ROW, SONG_ROW,
-  SONG_ROW, SONG_ROW, SONG_ROW, SONG_ROW,
-  SONG_ROW, SONG_ROW, SONG_ROW, SONG_ROW,
-  SONG_ROW, SONG_ROW, SONG_ROW, SONG_ROW,
+    SONG_ROW, SONG_ROW, SONG_ROW, SONG_ROW,
+    SONG_ROW, SONG_ROW, SONG_ROW, SONG_ROW,
+    SONG_ROW, SONG_ROW, SONG_ROW, SONG_ROW,
+    SONG_ROW, SONG_ROW, SONG_ROW, SONG_ROW,
 };
 
 static gui_element_t *gui_elements = &menu_gui;
@@ -170,6 +173,107 @@ static void ui_DrawPlaying(void) {
     gfx_SwapDraw();
 }
 
+static void ui_LoadProject(void) {
+    static const uint8_t numtable[] = {
+        [sk_7] = 7, [sk_8] = 8, [sk_9] = 9,
+        [sk_4] = 4, [sk_5] = 5, [sk_6] = 6,
+        [sk_1] = 1, [sk_2] = 2, [sk_3] = 3,
+        [sk_0] = 0,
+    };
+
+    char magic[] = {APPVAR_MAGIC, 0};
+    char *name;
+    void *ptr = NULL;
+    char names[LOAD_MAX][MAX_NAME_LENGTH + 1];
+    uint8_t index = 0;
+    uint8_t key = 0;
+    bool done = false;
+    
+    while (!done) {
+        gfx_ZeroScreen();
+        while (index < LOAD_MAX && (name = ti_Detect(&ptr, magic))) {
+            fontlib_SetCursorPosition(LOAD_VSPACING, (index + 1) * LOAD_VSPACING);
+            fontlib_DrawUInt(index, 1);
+            fontlib_DrawString(": ");
+            fontlib_DrawString(name);
+            strcpy(names[index], name);
+            index++;
+        }
+        gfx_SwapDraw();
+        while (!(key = os_GetCSC())) {}
+        switch (key) {
+            case sk_0:
+            case sk_1:
+            case sk_2:
+            case sk_3:
+            case sk_4:
+            case sk_5:
+            case sk_6:
+            case sk_7:
+            case sk_8:
+            case sk_9:
+                name = names[numtable[key]];
+                if (name == NULL) break;
+                done = true;
+                break;
+            case sk_Down:
+                index = 0;
+                if (name == NULL) ptr = NULL;
+                memset(names, 0, sizeof(names));
+                break;
+            default:
+                return;
+        }
+    }
+    
+    uint8_t handle = ti_Open(name, "r");
+    ti_Read(&soundasm_state, sizeof(soundasm_state), 1, handle);
+    ti_Close(handle);
+}
+
+static void ui_SaveProject(void) {
+    soundasm_state.magic[0] = APPVAR_MAGIC0;
+    soundasm_state.magic[1] = APPVAR_MAGIC1;
+    soundasm_state.magic[2] = APPVAR_MAGIC2;
+    soundasm_state.magic[3] = APPVAR_MAGIC3;
+    char name[MAX_NAME_LENGTH + 1] = {0}; // 1 more for the \0
+    uint8_t index = 0;
+    uint16_t key = 0;
+
+    do {
+        if (key == k_Clear) return;    
+
+        if (index < MAX_NAME_LENGTH) {
+            if (key >= k_CapA && key <= k_CapZ) {
+                name[index++] = key - k_CapA + 'a';
+            }
+            if (index != 0 && key >= k_0 && key <= k_9) {
+                name[index++] = key - k_0 + '0';
+            }
+        }
+
+        if (key == k_Del) {
+            name[--index] = 0;
+        }
+
+        gfx_ZeroScreen();
+        fontlib_SetCursorPosition(20, 20);
+        fontlib_DrawString("names can't start with numbers");
+        fontlib_SetCursorPosition(20, 28);
+        fontlib_DrawString("use enter to save!");
+        fontlib_SetCursorPosition(20, 50);
+        fontlib_DrawString(name);
+        if (index != MAX_NAME_LENGTH) fontlib_DrawString("|");
+        gfx_SwapDraw();
+    } while ((key = os_GetKey()) != k_Enter);
+    
+    if (index == 0) return;
+    
+    uint8_t handle = ti_Open(name, "w");
+    ti_Write(&soundasm_state, sizeof(soundasm_state), 1, handle);
+    ti_Close(handle);
+}
+
 static void ui_LoadPattern() {
     if (menu != PATTERN_EDIT) return;
     int index = ui_GetElement(0, 0)->value;
@@ -185,6 +289,12 @@ static void ui_LoadSong() {
     
     for (int i = 0; i < NUM_OSCS; i++) {
         ui_GetElement(i, 1)->value = soundasm_state.oscs[i].index;
+    }
+
+    for (int i = 0; i < MAX_SONG_LENGTH; i++) {
+        for (int x = 0; x < NUM_OSCS; x++) {
+            ui_GetElement(x, i + SONG_HEADER)->value = soundasm_state.oscs[x].arrangement[i];
+        }
     }
 }
 
@@ -350,6 +460,12 @@ static bool ui_Navigation(void) {
         case sk_2nd:
             if (menu == MAIN_MENU) {
                 switch (ui_GetCursor()->value) {
+                    case 0:
+                        ui_SaveProject();
+                        break;
+                    case 1:
+                        ui_LoadProject();
+                        break;
                     case 2:
                         ui_ChangeMenu(PATTERN_EDIT);
                         break;
